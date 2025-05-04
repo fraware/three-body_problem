@@ -1,0 +1,6 @@
+mass_parameter,galois_group,branch_point_type,monodromy_type,integrability,kam_measure,kam_characterization
+0.3333333333333333,Dihedral,square root (Z_2),Z_2,Partially integrable,0.8,Moderate KAM islands (mix of regular and chaotic regions)
+0.2962962962962963,Dihedral,square root (Z_2),Z_2,Partially integrable,0.5333333333333333,Moderate KAM islands (mix of regular and chaotic regions)
+0.2222222222222222,Triangular,none (meromorphic),Trivial,Partially integrable,0.7,Moderate KAM islands (mix of regular and chaotic regions)
+0.4,"SL(2,C)",transcendental,Complex,Non-integrable,0.9,Moderate KAM islands (mix of regular and chaotic regions)
+0.25,"SL(2,C)",transcendental,Complex,Non-integrable,0.6333333333333333,Moderate KAM islands (mix of regular and chaotic regions)

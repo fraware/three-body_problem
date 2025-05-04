@@ -1,0 +1,2 @@
+sigma,masses,galois_painleve_time,galois_quaternionic_time,painleve_quaternionic_time,three_way_time,galois_painleve_verified,galois_quaternionic_verified,painleve_quaternionic_verified,three_way_verified,galois_group,branch_point_type,monodromy_type
+0.335,[1.         1.         0.89833333],0.06856992244720458,0.06838324069976806,0.06853194236755371,0.20896685123443604,True,True,True,True,Dihedral Galois group with abelian identity component,square root (Z_2),Z_2

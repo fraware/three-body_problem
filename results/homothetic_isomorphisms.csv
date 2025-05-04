@@ -1,0 +1,8 @@
+sigma,galois_painleve_isomorphism,galois_quaternionic_isomorphism,painleve_quaternionic_isomorphism,three_way_isomorphism_verified,galois_group,branch_point_type,monodromy_type,is_abelian,has_painleve_property,is_trivial
+0.3333333333333333,True,True,True,True,Dihedral,square root (Z_2),Z_2,True,False,False
+0.2962962962962963,True,True,True,True,Dihedral,square root (Z_2),Z_2,True,False,False
+0.2222222222222222,True,True,True,True,Triangular,none (meromorphic),Trivial,True,True,True
+0.4,False,False,True,False,Dihedral,transcendental,Complex,True,False,False
+0.25,False,False,True,False,Dihedral,transcendental,Complex,True,False,False
+0.5,False,False,True,False,Dihedral,transcendental,Complex,True,False,False
+0.6,False,False,True,False,Dihedral,transcendental,Complex,True,False,False
