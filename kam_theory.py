@@ -46,52 +46,123 @@ class KAMTheoryIntegration:
         self.homothetic = HomotheticOrbits(self.tbp)
         self.lagrangian = LagrangianSolutions(self.tbp)
 
-    def compute_kam_tori_measure(self, sigma: float, n_samples: int = 100,
-                               integration_time: float = 10.0) -> float:
+    def compute_kam_tori_measure(self, sigma: float, n_samples: int = 500,
+                            integration_time: float = 10.0,
+                            n_trials: int = 5,
+                            random_seed: int = 42) -> Dict[str, float]:
         """
         Compute an estimate of the measure of phase space occupied by KAM tori.
 
         Args:
             sigma: Mass parameter σ
-            n_samples: Number of initial condition samples
+            n_samples: Number of initial condition samples per trial
             integration_time: Integration time for each sample
+            n_trials: Number of trials to run and average (for statistical stability)
+            random_seed: Seed for random number generator (for reproducibility)
 
         Returns:
-            Estimated measure of phase space occupied by KAM tori
+            Dictionary with KAM measure statistics (mean, std_dev)
         """
         # Create a ThreeBodyProblem instance with the given sigma
-        # We need to find masses that give the desired sigma
         masses = self.find_masses_for_sigma(sigma)
         tbp = ThreeBodyProblem(masses, self.G)
 
-        # Generate a set of initial conditions near the Lagrangian solution
+        # Create a Lagrangian solutions generator
         lagrangian = LagrangianSolutions(tbp)
 
-        # Regular arrays to store Lyapunov exponents
-        lyapunov_exponents = np.zeros(n_samples)
+        # Set the random seed for reproducibility
+        np.random.seed(random_seed)
 
-        # Sample initial conditions in phase space
-        count = 0
-        for i in range(n_samples):
-            # Generate initial conditions with some perturbation from Lagrangian solution
-            perturbation_factor = 0.05 * (i / n_samples)
-            initial_state = self.generate_perturbed_initial_state(lagrangian, perturbation_factor)
+        # Run multiple trials to get statistical measures
+        trial_results = []
 
-            # Integrate the system
-            t_span = (0, integration_time)
-            results = tbp.integrate(initial_state, t_span, method='RK45', rtol=1e-8, atol=1e-8)
+        for trial in range(n_trials):
+            # Offset the seed for each trial to maintain trial independence
+            # while preserving reproducibility
+            np.random.seed(random_seed + trial)
 
-            # Compute the largest Lyapunov exponent
-            lyapunov_exponents[i] = self.estimate_lyapunov_exponent(results)
+            # Count regular (KAM) trajectories
+            regular_count = 0
 
-            # A small Lyapunov exponent indicates regular (KAM) motion
-            if lyapunov_exponents[i] < 0.01:
-                count += 1
+            # Use a combination of grid and random sampling for better coverage
+            # First create a grid of initial perturbation factors
+            grid_size = int(np.ceil(np.sqrt(n_samples)))
+            perturbation_grid = np.linspace(0.01, 0.15, grid_size)
 
-        # Estimate the measure of phase space occupied by KAM tori
-        kam_measure = count / n_samples
+            # Sample using the grid for better coverage
+            sample_index = 0
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    if sample_index >= n_samples:
+                        break
 
-        return kam_measure
+                    # Get grid-based perturbation factors
+                    perturb_x = perturbation_grid[i]
+                    perturb_y = perturbation_grid[j]
+
+                    # Generate initial state with controlled perturbation
+                    initial_state = self.generate_grid_perturbed_initial_state(
+                        lagrangian, perturb_x, perturb_y)
+
+                    # Integrate the system
+                    t_span = (0, integration_time)
+                    results = tbp.integrate(initial_state, t_span,
+                                        method='RK45', rtol=1e-8, atol=1e-8)
+
+                    # Compute the largest Lyapunov exponent
+                    lyapunov = self.estimate_lyapunov_exponent(results)
+
+                    # A small Lyapunov exponent indicates regular (KAM) motion
+                    if lyapunov < 0.01:
+                        regular_count += 1
+
+                    sample_index += 1
+
+            # Estimate the measure of phase space occupied by KAM tori for this trial
+            trial_kam_measure = regular_count / n_samples
+            trial_results.append(trial_kam_measure)
+
+        # Calculate statistics across trials
+        mean_kam_measure = np.mean(trial_results)
+        std_dev_kam_measure = np.std(trial_results)
+
+        return {
+            "kam_measure": mean_kam_measure,
+            "std_dev": std_dev_kam_measure,
+            "trials": trial_results
+        }
+
+    def generate_grid_perturbed_initial_state(self, lagrangian: LagrangianSolutions,
+                                            perturb_x: float, perturb_y: float) -> np.ndarray:
+        """
+        Generate an initial state with controlled grid-based perturbation.
+
+        Args:
+            lagrangian: LagrangianSolutions instance
+            perturb_x: Perturbation factor for position components
+            perturb_y: Perturbation factor for velocity components
+
+        Returns:
+            Perturbed initial state vector
+        """
+        # Generate a Lagrangian solution initial state
+        base_state = lagrangian.generate_initial_state(size=1.0)
+
+        # Get position and momentum components
+        positions = base_state[:9]  # First 9 elements are positions
+        momenta = base_state[9:]    # Last 9 elements are momenta
+
+        # Apply controlled perturbations
+        position_perturbation = np.random.normal(0, perturb_x, positions.shape)
+        momentum_perturbation = np.random.normal(0, perturb_y, momenta.shape)
+
+        # Combine into perturbed state
+        perturbed_state = np.concatenate([
+            positions + position_perturbation,
+            momenta + momentum_perturbation
+        ])
+
+        return perturbed_state
 
     def find_masses_for_sigma(self, sigma: float) -> np.ndarray:
         """
@@ -221,25 +292,46 @@ class KAMTheoryIntegration:
         return max(0, lyapunov)  # Lyapunov exponents should be non-negative
 
     def compute_kam_measure_vs_sigma(self, sigma_values: np.ndarray,
-                                  n_samples: int = 50) -> Dict:
+                                n_samples: int = 500, n_trials: int = 5,
+                                random_seed: int = 42) -> Dict:
         """
         Compute the KAM measure as a function of the mass parameter.
 
         Args:
             sigma_values: Array of sigma values to analyze
-            n_samples: Number of initial condition samples per sigma value
+            n_samples: Number of initial condition samples per trial
+            n_trials: Number of trials for statistical stability
+            random_seed: Random seed for reproducibility
 
         Returns:
             Dictionary with results of the analysis
         """
         kam_measures = np.zeros_like(sigma_values, dtype=float)
+        kam_std_devs = np.zeros_like(sigma_values, dtype=float)
+        actual_sigma_values = np.zeros_like(sigma_values, dtype=float)
 
         for i, sigma in enumerate(sigma_values):
-            kam_measures[i] = self.compute_kam_tori_measure(sigma, n_samples)
+            # Check if sigma exceeds the mathematical constraint
+            if sigma > 1/3:
+                print(f"Warning: sigma={sigma} exceeds mathematical constraint of 1/3.")
+                print("Using equal masses (sigma=1/3) for this calculation.")
+                result = self.compute_kam_tori_measure(1/3, n_samples, n_trials=n_trials,
+                                                    random_seed=random_seed)
+                kam_measures[i] = result["kam_measure"]
+                kam_std_devs[i] = result["std_dev"]
+                actual_sigma_values[i] = 1/3
+            else:
+                result = self.compute_kam_tori_measure(sigma, n_samples, n_trials=n_trials,
+                                                    random_seed=random_seed)
+                kam_measures[i] = result["kam_measure"]
+                kam_std_devs[i] = result["std_dev"]
+                actual_sigma_values[i] = sigma
 
         return {
             "sigma_values": sigma_values,
-            "kam_measures": kam_measures
+            "kam_measures": kam_measures,
+            "kam_std_devs": kam_std_devs,
+            "actual_sigma_values": actual_sigma_values
         }
 
     def compute_constants_of_isomorphism(self, sigma_values: np.ndarray) -> Dict:
@@ -285,46 +377,6 @@ class KAMTheoryIntegration:
             "constants": constants
         }
 
-    def plot_kam_measure(self, results: Dict, figsize: Tuple[float, float] = (10, 6)) -> plt.Figure:
-        """
-        Plot the KAM measure as a function of the mass parameter.
-
-        Args:
-            results: Dictionary with KAM measure analysis results
-            figsize: Figure size (width, height) in inches
-
-        Returns:
-            The figure object
-        """
-        sigma_values = results["sigma_values"]
-        kam_measures = results["kam_measures"]
-
-        fig, ax = plt.subplots(figsize=figsize)
-
-        # Plot the KAM measure
-        ax.plot(sigma_values, kam_measures, 'o-', lw=2, markersize=8)
-
-        # Mark the exceptional values
-        exceptional_values = [1/3, 2**3/3**3, 2/3**2]
-        for sigma_0 in exceptional_values:
-            ax.axvline(x=sigma_0, color='r', linestyle='--', alpha=0.7)
-            ax.text(sigma_0, 0.1, f"σ = {sigma_0:.6f}", rotation=90,
-                   va='bottom', ha='center')
-
-        # Set axis labels and title
-        ax.set_xlabel('Mass parameter σ')
-        ax.set_ylabel('Measure of phase space occupied by KAM tori')
-        ax.set_title('KAM Measure vs. Mass Parameter')
-
-        # Set axis limits
-        ax.set_xlim(min(sigma_values) - 0.05, max(sigma_values) + 0.05)
-        ax.set_ylim(0, 1.05)
-
-        # Add a grid
-        ax.grid(True, alpha=0.3)
-
-        return fig
-
     def isomorphism_kam_correspondence(self, sigma: float) -> Dict:
         """
         Analyze the correspondence between isomorphism structures and KAM Theory.
@@ -368,7 +420,11 @@ class KAMTheoryIntegration:
             integrability = "Non-integrable"
 
         # Estimate the KAM measure
-        kam_measure = self.compute_kam_tori_measure(sigma, n_samples=30)
+        kam_result = self.compute_kam_tori_measure(sigma, n_samples=30)
+
+        # Extract the kam_measure value from the result dictionary
+        kam_measure = kam_result["kam_measure"]
+        kam_std_dev = kam_result.get("std_dev", 0.0)
 
         # Determine the relationship to KAM Theory
         if kam_measure > 0.9:
@@ -389,6 +445,7 @@ class KAMTheoryIntegration:
             },
             "kam_theory": {
                 "kam_measure": kam_measure,
+                "kam_std_dev": kam_std_dev,
                 "characterization": kam_characterization
             },
             "correspondence": {

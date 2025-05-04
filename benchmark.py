@@ -129,6 +129,70 @@ class BenchmarkRunner:
 
         return results
 
+    def benchmark_kam_theory(self, sigma_values: np.ndarray) -> Dict:
+        """
+        Benchmark KAM Theory on the three-body problem.
+
+        Args:
+            sigma_values: Array of sigma values to analyze
+
+        Returns:
+            Dictionary with benchmark results
+        """
+        # Set random seed for reproducibility
+        random_seed = 42
+
+        # Initialize KAM theory with proper masses (exactly 3 values)
+        # Use equal masses which gives sigma = 1/3
+        masses = np.array([1.0, 1.0, 1.0])
+        kam = KAMTheoryIntegration(masses)
+        kam_viz = KAMVisualization()
+
+        # Use filtered sigma values that respect the constraint σ ≤ 1/3
+        valid_sigma_values = sigma_values[sigma_values <= 1/3]
+
+        kam_results = kam.compute_kam_measure_vs_sigma(
+            valid_sigma_values,
+            n_samples=10,
+            n_trials=5,
+            random_seed=random_seed
+        )
+
+        # Generate table data with consistent values
+        table_data = kam_viz.generate_kam_isomorphism_table(random_seed=random_seed)
+
+        # Generate LaTeX table
+        latex_table = kam_viz.generate_latex_kam_table(table_data)
+
+        # Create KAM measure plot
+        fig = self.kam_vis.plot_kam_measure(
+            kam_results["sigma_values"],
+            kam_results["kam_measures"],
+            kam_results["actual_sigma_values"],
+            kam_results.get("kam_std_devs")
+        )
+
+        # Save results
+        output_dir = "results/kam_theory"
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Save the plot
+        fig.savefig(f"{output_dir}/kam_measure.png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        # Save the LaTeX table
+        with open(f"{output_dir}/kam_table.tex", 'w') as f:
+            f.write(latex_table)
+
+        # Combine results
+        all_results = {
+            **kam_results,
+            "table_data": table_data,
+            "latex_table": latex_table
+        }
+
+        return all_results
+
     def benchmark_homothetic_orbits(self, sigma_values: Optional[np.ndarray] = None) -> Dict:
         """
         Run enhanced benchmarks for homothetic orbits with stress testing.
@@ -749,65 +813,6 @@ class BenchmarkRunner:
             "results": results
         }
 
-    def benchmark_kam_theory(self, sigma_values: Optional[np.ndarray] = None) -> Dict:
-        """
-        Benchmark the KAM Theory integration methods.
-
-        Args:
-            sigma_values: Optional array of sigma values to test
-
-        Returns:
-            Dictionary with benchmark results
-        """
-        if sigma_values is None:
-            # Define standard set of sigma values to test
-            sigma_values = np.linspace(0.2, 0.6, 20)
-
-        # Create a temporary KAM Theory integration object
-        masses = np.array([1.0, 1.0, 1.0])
-        kam = KAMTheoryIntegration(masses)
-
-        # Compute KAM measure vs. sigma
-        t_start = time.time()
-        kam_results = kam.compute_kam_measure_vs_sigma(sigma_values, n_samples=30)
-        t_kam = time.time() - t_start
-
-        # Compute constants of isomorphism
-        t_start = time.time()
-        constants = kam.compute_constants_of_isomorphism(sigma_values)
-        t_constants = time.time() - t_start
-
-        # Create KAM measure plot
-        fig = self.kam_vis.plot_kam_measure(kam_results["sigma_values"], kam_results["kam_measures"])
-        fig.savefig(os.path.join(self.output_dir, "kam_measure.png"), dpi=300)
-        plt.close(fig)
-
-        # Save KAM measure data to CSV
-        kam_data = {
-            "sigma": kam_results["sigma_values"],
-            "kam_measure": kam_results["kam_measures"]
-        }
-        df = pd.DataFrame(kam_data)
-        df.to_csv(os.path.join(self.output_dir, "kam_measure.csv"), index=False)
-
-        # Create isomorphism-KAM correspondence
-        correspondence_results = []
-        for sigma in [1/3, 2**3/3**3, 2/3**2, 0.4, 0.25]:
-            correspondence = kam.isomorphism_kam_correspondence(sigma)
-            correspondence_results.append(correspondence)
-
-        # Create correspondence table
-        self.create_correspondence_table(correspondence_results)
-
-        return {
-            "sigma_values": sigma_values,
-            "kam_measures": kam_results["kam_measures"],
-            "computation_time": t_kam,
-            "constants_time": t_constants,
-            "constants": constants,
-            "correspondence_results": correspondence_results
-        }
-
     def benchmark_verification_case_0_335(self) -> Dict:
         """
         Benchmark the special case with sigma = 0.335 (near 1/3).
@@ -890,13 +895,20 @@ class BenchmarkRunner:
         print("Starting generation of all results...")
 
         # Define standard set of sigma values to test
-        sigma_values_dense = np.concatenate([
-            np.array([1/3, 2**3/3**3, 2/3**2]),  # Exceptional values
-            np.linspace(0.2, 0.6, 20)  # Additional values
-        ])
+        # Ensure sigma values don't exceed 1/3 (the mathematical constraint)
+        exceptional_values = np.array([1/3, 2**3/3**3, 2/3**2])
 
-        sigma_values_sparse = np.array([1/3, 2**3/3**3, 2/3**2, 0.4, 0.25])
+        # Generate additional values only up to 1/3 (the constraint)
+        additional_values = np.linspace(0.2, 1/3, 20)
+        sigma_values_dense = np.concatenate([exceptional_values, additional_values])
 
+        # Ensure uniqueness and sorting
+        sigma_values_dense = np.unique(sigma_values_dense)
+
+        # Sparse set for more intensive calculations
+        sigma_values_sparse = np.array([1/3, 2**3/3**3, 2/3**2, 0.25, 0.2])
+
+        # Continue with the rest of the function as before...
         # Verify isomorphisms
         print("Verifying isomorphisms for homothetic orbits...")
         homothetic_results = self.verify_homothetic_orbits_isomorphisms(sigma_values_dense)
